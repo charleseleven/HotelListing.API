@@ -8,9 +8,12 @@
 
   <ItemGroup>
     <None Remove="Data\Hotel.cs~RFb72cf1.TMP" />
+    <None Remove="Models\Country\GetCountryDto.cs~RF18398357.TMP" />
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="AutoMapper" Version="12.0.1" />
+    <PackageReference Include="AutoMapper.Extensions.Microsoft.DependencyInjection" Version="12.0.1" />
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="7.0.10" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="7.0.11" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Tools" Version="7.0.12">
