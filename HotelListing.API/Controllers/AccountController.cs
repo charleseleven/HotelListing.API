@@ -10,10 +10,12 @@ namespace HotelListing.API.Controllers
     public class AccountController : ControllerBase
     {
         private readonly IAuthManager _authManager;
+        private readonly ILogger<AccountController> _logger;
 
-        public AccountController(IAuthManager authManager)
+        public AccountController(IAuthManager authManager, ILogger<AccountController> logger)
         {
             _authManager = authManager;
+            _logger = logger;
         }
 
         // POST: api/Account/register
@@ -24,18 +26,29 @@ namespace HotelListing.API.Controllers
         [ProducesResponseType(StatusCodes.Status200OK)]
         public async Task<ActionResult> Register([FromBody] ApiUserDto apiUserDto)
         {
-            var errros = await _authManager.Register(apiUserDto);
+            _logger.LogInformation($"Registration attempt for {apiUserDto.Email}");
 
-            if (errros.Any())
+            try
             {
-                foreach (var error in errros)
-                {
-                    ModelState.AddModelError(error.Code, error.Description);
-                }
-                return BadRequest(ModelState);
-            }
+                var errros = await _authManager.Register(apiUserDto);
 
-            return Ok();
+                if (errros.Any())
+                {
+                    foreach (var error in errros)
+                    {
+                        ModelState.AddModelError(error.Code, error.Description);
+                    }
+                    return BadRequest(ModelState);
+                }
+
+                return Ok();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Something went wrong in the {nameof(Register)} - User Registration attempt for {apiUserDto.Email}");
+                return Problem($"Something went wrong in the {nameof(Register)}", statusCode: 500);
+            }
+            
         }
         
         // POST: api/Account/login
@@ -46,14 +59,26 @@ namespace HotelListing.API.Controllers
         [ProducesResponseType(StatusCodes.Status200OK)]
         public async Task<ActionResult> Login([FromBody] LoginDto loginDto)
         {
-            var authResponse = await _authManager.Login(loginDto);
+            _logger.LogInformation($"Login attempt for {loginDto.Email}");
 
-            if (authResponse == null)
+            try
             {
-                return Unauthorized();
+                var authResponse = await _authManager.Login(loginDto);
+
+                if (authResponse == null)
+                {
+                    return Unauthorized();
+                }
+
+                return Ok(authResponse);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Something went wrong in the {nameof(Login)} - User Login attempt for {loginDto.Email}");
+                return Problem($"Something went wrong in the {nameof(Login)}", statusCode: 500);
             }
 
-            return Ok(authResponse);
+            
         }
 
         // POST: api/Account/refresh
