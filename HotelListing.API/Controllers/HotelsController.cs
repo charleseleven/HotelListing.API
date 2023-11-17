@@ -12,6 +12,8 @@ using HotelListing.API.Models.Hotel;
 using HotelListing.API.Models.Country;
 using HotelListing.API.Repository;
 using Microsoft.AspNetCore.Authorization;
+using HotelListing.API.Models;
+using Microsoft.AspNetCore.OData.Query;
 
 namespace HotelListing.API.Controllers
 {
@@ -30,12 +32,21 @@ namespace HotelListing.API.Controllers
         }
 
         // GET: api/Hotels
-        [HttpGet]
+        [HttpGet("GetAll")]
+        [EnableQuery]
         public async Task<ActionResult<IEnumerable<HotelDto>>> GetHotels()
         {
             var hotels = await _hotelsRepository.GetAllAsync();
             var hotelsDto = _mapper.Map<List<HotelDto>>(hotels);
             return Ok(hotelsDto);
+        }
+
+        // GET: api/Hotels/?StartIndex=0&pagesize=25&PageNumber=1
+        [HttpGet]
+        public async Task<ActionResult<PagedResult<HotelDto>>> GetPagedHotels([FromQuery] QueryParameters queryParameters)
+        {
+            var pagedHotelsResult = await _hotelsRepository.GetAllAsync<HotelDto>(queryParameters);
+            return Ok(pagedHotelsResult);
         }
 
         // GET: api/Hotels/5
