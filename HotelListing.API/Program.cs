@@ -14,14 +14,19 @@ using Microsoft.AspNetCore.Mvc.Versioning;
 using Microsoft.AspNetCore.OData;
 using HotelListing.API.Core.Repository;
 using Microsoft.OpenApi.Models;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using JsonSerializer = System.Text.Json.JsonSerializer;
+using System.Text.Json;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 
-builder.Services.AddDbContext<HotelListingDbContext>(options =>
-{
-    options.UseSqlServer(builder.Configuration.GetConnectionString("HotelListingDbConnectionString"));
+var connectionString = builder.Configuration.GetConnectionString("HotelListingDbConnectionString");
+
+builder.Services.AddDbContext<HotelListingDbContext>(options => {
+    options.UseSqlServer(connectionString);
 });
 
 builder.Services.AddIdentityCore<ApiUser>()
@@ -127,6 +132,16 @@ builder.Services.AddResponseCaching(options =>
     options.UseCaseSensitivePaths = true;
 });
 
+// AspNetCore.HealthChecks.SqlServer
+// Microsoft.Extensions.Diagnostics.HealthCheck.EntityFrameworkCore
+builder.Services.AddHealthChecks()
+    .AddCheck<CustomHealthCheck>("Custom Health Check",
+        failureStatus: HealthStatus.Degraded,
+        tags: new[] { "custom" }
+    );
+//.AddSqlServer(connectionString) // ** Não existe o método AddSqlServer para ser inferido nessa lib 
+//.AddDbContextCheck<HotelListingDbContext>();
+
 builder.Services.AddControllers().AddOData(options =>
 {
     options.Select().Filter().Expand().OrderBy();
@@ -140,6 +155,56 @@ if (app.Environment.IsDevelopment())
     app.UseSwagger();
     app.UseSwaggerUI();
 }
+
+app.MapHealthChecks("/healthcheck", new HealthCheckOptions
+{
+    Predicate = healthcheck => healthcheck.Tags.Contains("custom"),
+    ResultStatusCodes =
+    {
+        [HealthStatus.Healthy] = StatusCodes.Status200OK,
+        [HealthStatus.Degraded] = StatusCodes.Status200OK,
+        [HealthStatus.Unhealthy] = StatusCodes.Status503ServiceUnavailable
+    },
+    ResponseWriter = WriteResponse
+});
+
+static Task WriteResponse(HttpContext context, HealthReport healthReport)
+{
+    context.Response.ContentType = "application/json";
+
+    var options = new System.Text.Json.JsonWriterOptions
+    {
+        Indented = true
+    };
+
+    using var memorySystem = new MemoryStream();
+    using (var jsonWriter = new Utf8JsonWriter(memorySystem, options))
+    {
+        jsonWriter.WriteStartObject();
+        jsonWriter.WriteString("status", healthReport.Status.ToString());
+        jsonWriter.WriteStartObject("results");
+        foreach (var healthReportEntry in healthReport.Entries)
+        {
+            jsonWriter.WriteStartObject(healthReportEntry.Key);
+            jsonWriter.WriteString("status", healthReportEntry.Value.Status.ToString());
+            jsonWriter.WriteString("description", healthReportEntry.Value.Description);
+            jsonWriter.WriteStartObject("data");
+        
+            foreach (var item in healthReportEntry.Value.Data)
+            {
+                jsonWriter.WritePropertyName(item.Key);
+                JsonSerializer.Serialize(jsonWriter, item.Value, item.Value?.GetType() ?? typeof(object));
+            }
+            jsonWriter.WriteEndObject();
+            jsonWriter.WriteEndObject();
+        }
+        jsonWriter.WriteEndObject();
+        jsonWriter.WriteEndObject();
+    }
+    return context.Response.WriteAsync(Encoding.UTF8.GetString(memorySystem.ToArray()));
+}
+
+app.MapHealthChecks("/health");
 
 app.UseMiddleware<ExceptionMiddleware>();
 
@@ -171,3 +236,15 @@ app.UseAuthorization();
 app.MapControllers();
 
 app.Run();
+
+class CustomHealthCheck : IHealthCheck
+{
+    public Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context, CancellationToken cancellationToken = default)
+    {
+        var isHealthy = true;
+        if (isHealthy)
+            return Task.FromResult(HealthCheckResult.Healthy("All System are looking healthy"));
+
+        return Task.FromResult(new HealthCheckResult(context.Registration.FailureStatus, "System Unhealthy"));
+    }
+}
